@@ -242,8 +242,8 @@ public class AerospikeLoad implements Runnable {
 	}
 	
 	private static AerospikeClient getAerospikeClient(CommandLine cl) {
-		ClientPolicy clientPolicy = new ClientPolicy();	
-		
+		ClientPolicy clientPolicy = new ClientPolicy();
+        clientPolicy.setFailIfNotConnected(false);
 		initClientPolicy(cl, clientPolicy);
 		
 		AerospikeClient client = new AerospikeClient(clientPolicy, params.hosts);
