@@ -163,6 +163,8 @@ public class AerospikeLoad implements Runnable {
 			options.addOption("tlsLoginOnly", false, "Use TLS/SSL sockets on node login only");
 			options.addOption("auth", true, "Authentication mode. Values: " + Arrays.toString(AuthMode.values()));
 
+            options.addOption("isHLLOps", "HyerLogLog", true, "HyperLogLog data");
+
 			options.addOption("uk", "send-user-key", false, 
 					"Send user defined key in addition to hash digest to store on the server. (default: userKey is not sent to reduce meta-data overhead)"
 					);

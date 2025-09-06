@@ -24,26 +24,18 @@ package com.aerospike.load;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.Callable;
 
+import com.aerospike.client.*;
+import com.aerospike.client.operation.HLLOperation;
+import com.aerospike.client.operation.HLLPolicy;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
-
-import com.aerospike.client.AerospikeClient;
-import com.aerospike.client.AerospikeException;
-import com.aerospike.client.Bin;
-import com.aerospike.client.Key;
-import com.aerospike.client.Value;
-import com.aerospike.client.ResultCode;
 
 /**
  * 
@@ -70,8 +62,10 @@ public class AsWriterTask implements Callable<Integer> {
 	private Parameters params;
 	private Counter counters;
 	private JSONParser jsonParser;
+    private int hllIndexBits = 12;  // Controls accuracy and size; 12 is typical
 
-	private static Logger log = LogManager.getLogger(AsWriterTask.class);
+
+    private static Logger log = LogManager.getLogger(AsWriterTask.class);
 
 	/**
 	 * AsWriterTask process given data columns for a record and create Set and Key and Bins.
@@ -125,17 +119,27 @@ public class AsWriterTask implements Callable<Integer> {
 				log.trace("No bins to insert");
 				return;
 			}
-			// All bins will have append operation if secondary mapping.
-			if (this.mappingDef.secondaryMapping) {
-				for (Bin b : bins) {
-					client.operate(this.params.writePolicy, key,
-							com.aerospike.client.cdt.ListOperation.append(b.name, b.value));
-				}
-				counters.write.mappingWriteCount.getAndIncrement();
-			} else {
-				this.client.put(this.params.writePolicy, key, bins.toArray(new Bin[bins.size()]));
-				counters.write.bytesProcessed.addAndGet(this.lineSize);
-			}
+            if (this.params.isHLLOps) {
+                for (Bin b : bins) {
+                    final String hllBin = b.name;
+                    final HLLPolicy hllPolicy =new HLLPolicy();
+                    final Operation operation =  HLLOperation.add(hllPolicy ,hllBin, Arrays.asList(b.value), hllIndexBits);
+                    client.operate(this.params.writePolicy, key, operation);
+                }
+                counters.write.mappingWriteCount.getAndIncrement();
+            } else {
+                // All bins will have append operation if secondary mapping.
+                if (this.mappingDef.secondaryMapping) {
+                    for (Bin b : bins) {
+                        client.operate(this.params.writePolicy, key,
+                                com.aerospike.client.cdt.ListOperation.append(b.name, b.value));
+                    }
+                    counters.write.mappingWriteCount.getAndIncrement();
+                } else {
+                    this.client.put(this.params.writePolicy, key, bins.toArray(new Bin[bins.size()]));
+                    counters.write.bytesProcessed.addAndGet(this.lineSize);
+                }
+            }
 			counters.write.writeCount.getAndIncrement();
 			
 			log.trace("Wrote line " + lineNumber + " Key: " + key.userKey + " to Aerospike.");

@@ -36,7 +36,8 @@ public class Parameters {
 	int abortErrorCount;
 	boolean verbose;
 	boolean unorderdMaps;
-	
+	boolean isHLLOps;
+
 	/**
 	 * Set parameters from commandline argument. 
 	 * @param hosts
@@ -56,7 +57,8 @@ public class Parameters {
 			long timeZoneOffset,
 			int abortErrorCount,
 			boolean verbose,
-			boolean unorderdMaps
+			boolean unorderdMaps,
+            boolean isHLLOps
 			) {
 		this.hosts = hosts;
 		this.namespace = namespace;
@@ -66,6 +68,7 @@ public class Parameters {
 		this.abortErrorCount = abortErrorCount;
 		this.verbose = verbose;
 		this.unorderdMaps = unorderdMaps;
+        this.isHLLOps = isHLLOps;
 	}
 
 	@Override

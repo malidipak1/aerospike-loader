@@ -124,6 +124,11 @@ public class Utils {
 			sendKey = true;
 		}
 
+        boolean isHLLOps = false;
+        if(cl.hasOption("isHLLOps")){
+            isHLLOps = true;
+        }
+
 		String writeAction = cl.getOptionValue("wa", "UPDATE");
 
 		WritePolicy writePolicy = new WritePolicy();
@@ -143,7 +148,7 @@ public class Utils {
 			unorderdMaps = true;
 		}
 
-		return new Parameters(hosts, namespace, writePolicy, maxThroughput, timeZoneOffset, abortErrorCount, verbose, unorderdMaps);
+		return new Parameters(hosts, namespace, writePolicy, maxThroughput, timeZoneOffset, abortErrorCount, verbose, unorderdMaps, isHLLOps);
 	}
 
 	/**
