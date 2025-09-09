@@ -5,3 +5,5 @@
 # mvn install
 
 java -Dlog4j2.contextSelector=org.apache.logging.log4j.core.selector.BasicContextSelector -cp target/aerospike-load-*-jar-with-dependencies.jar com.aerospike.load.AerospikeLoad $*
+
+java -Dlog4j2.contextSelector=org.apache.logging.log4j.core.selector.BasicContextSelector -cp target/aerospike-load-*-jar-with-dependencies.jar  com.aerospike.load.bitmap.SegmentIngestion --aeroHost 10.20.23.8 --ns ns_disk --set userSegments --file data/x.txt
