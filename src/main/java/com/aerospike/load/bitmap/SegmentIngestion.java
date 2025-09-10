@@ -3,16 +3,22 @@ package com.aerospike.load.bitmap;
 import com.aerospike.client.*;
 import com.aerospike.client.Record;
 import com.aerospike.client.policy.ClientPolicy;
+import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
+import com.google.common.hash.Hashing;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.roaringbitmap.longlong.Roaring64NavigableMap;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -20,7 +26,7 @@ import java.util.concurrent.Executors;
 
 public class SegmentIngestion {
     private static Logger log = LogManager.getLogger(SegmentIngestion.class);
-    private static final int BATCH_SIZE = 1000; // Process 10,000 lines at a time
+    private static final int BATCH_SIZE = 10000;
 
     private final AerospikeClient client;
     private String namespace;
@@ -46,10 +52,10 @@ public class SegmentIngestion {
             log.error("Usage: ingest|query [options]");
             System.exit(2);
         }
-        String cmd = argv[0];
-        Map<String, String> opts = new HashMap<>();
-        List<String> paths = new ArrayList<>();
-        for (int i = 1; i < argv.length; i++) {
+
+        final Map<String, String> opts = new HashMap<>();
+        final List<String> paths = new ArrayList<>();
+        for (int i = 0; i < argv.length; i++) {
             String a = argv[i];
             if (a.startsWith("--")) {
                 String key = a.substring(2);
@@ -77,9 +83,9 @@ public class SegmentIngestion {
         clientPolicy.setFailIfNotConnected(false);
         clientPolicy.maxConnsPerNode = writerThread + 1;
 
-        AerospikeClient aerospikeClient = new AerospikeClient(null, hosts);
+        final AerospikeClient aerospikeClient = new AerospikeClient(clientPolicy, hosts);
 
-        SegmentIngestion segmentIngestion = new SegmentIngestion(aerospikeClient, namespace, setName, writerThread);
+        final SegmentIngestion segmentIngestion = new SegmentIngestion(aerospikeClient, namespace, setName, writerThread);
         segmentIngestion.ingestFile(Paths.get(file));
     }
 
@@ -95,13 +101,11 @@ public class SegmentIngestion {
                     batch = new ArrayList<>(BATCH_SIZE); // Prepare for next batch
                 }
             }
-            // Process any remaining lines as a final batch
             if (!batch.isEmpty()) {
                 processBatch(batch);
             }
 
-            // Flush segment data to Aerospike
-            flushToAerospike();
+            saveToAerospike();
 
         } catch (Exception e) {
             log.error(e);
@@ -129,7 +133,7 @@ public class SegmentIngestion {
             if (parts.length < 2) return;
 
             final String userId = parts[0];
-            long userHash = uuidToLong(userId);
+            long userHash = hashUserId(userId);
             String[] segments = parts[1].split(",");
 
             for (final String seg : segments) {
@@ -163,8 +167,9 @@ public class SegmentIngestion {
         }
     }
 
-    private void flushToAerospike() throws IOException {
-        WritePolicy policy = new WritePolicy();
+    private void saveToAerospike() throws IOException {
+        final WritePolicy policy = new WritePolicy();
+        policy.recordExistsAction = RecordExistsAction.REPLACE;
         for (Map.Entry<String, Roaring64NavigableMap> entry : segmentBitmaps.entrySet()) {
             final String segmentId = entry.getKey();
             final Roaring64NavigableMap newBitmap = entry.getValue();
@@ -184,8 +189,7 @@ public class SegmentIngestion {
             Bin bin = new Bin("users", Value.get(serialized));
             client.put(policy, key, bin);
 
-            log.info("Flushed segment: " + segmentId +
-                    " total unique users: " + merged.getLongCardinality());
+            log.info("segment: {}, total unique users: {}" ,segmentId, merged.getLongCardinality());
         }
 
         // Clear in-memory cache after flush
@@ -200,8 +204,11 @@ public class SegmentIngestion {
         }
     }
 
-    private long uuidToLong(String uuid) {
-        final UUID u = UUID.fromString(uuid);
-        return u.getMostSignificantBits() ^ u.getLeastSignificantBits();
+    private long hashUserId(String uuid) {
+        return Hashing.murmur3_128().hashString(uuid, StandardCharsets.UTF_8).asLong();
+        //But if you stick to .asLong(), you’re truncating to 64 bits, which is still fine —
+        // collision risk is low until you get close to ~2^32 (~4B users). for more than 4B we should move to below
+        //return Hashing.murmur3_128().hashString(uuid, StandardCharsets.UTF_8);
     }
+
 }
