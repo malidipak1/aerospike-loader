@@ -21,6 +21,18 @@ import java.util.stream.Collectors;
 public class HLLIngestion {
     private static Logger log = LogManager.getLogger(SegmentIngestion.class);
     private static final int BATCH_SIZE = 10000;
+    private static final String BIN_NAME = "users_IN";
+    private static final int INDEX_BITS = 15;
+    //indexBits = 14 is good enough (< 1% error).
+    //indexBits = 15 → 32,768 registers → ~0.58% error
+    //indexBits = 16 → 65,536 registers → ~0.41% error
+    private static final int MINHASH_BITS = 0;
+    /**
+     * Used for Jaccard similarity between HLLs (e.g., estimating overlap).
+     * If you only need counts and Boolean queries (AND, OR, NOT), set minhashBits = 0.
+     * If you also want to compute audience similarity (e.g., overlap %), then set minhashBits = 4–8 (trade-off: more memory).
+     */
+
 
     private AerospikeClient client;
     private String namespace;
@@ -28,17 +40,7 @@ public class HLLIngestion {
     private ExecutorService executor;
     private final ConcurrentHashMap<String, Object> segmentLocks = new ConcurrentHashMap<>();
 
-    private static final int scaleFactor = 1;
-    private int indexBits = 15;
-    //indexBits = 14 is good enough (< 1% error).
-    //indexBits = 15 → 32,768 registers → ~0.58% error
-    //indexBits = 16 → 65,536 registers → ~0.41% error
-    private int minhashBits = 0;
-    /**
-     * Used for Jaccard similarity between HLLs (e.g., estimating overlap).
-     * If you only need counts and Boolean queries (AND, OR, NOT), set minhashBits = 0.
-     * If you also want to compute audience similarity (e.g., overlap %), then set minhashBits = 4–8 (trade-off: more memory).
-     */
+    private static final int scaleFactor = 5;
 
     private HLLIngestion(AerospikeClient client,
                              final String namespace,
@@ -94,6 +96,8 @@ public class HLLIngestion {
 
     public void ingestFile(final Path file) throws Exception {
         log.info("Processing file: " + file);
+        long startTime = System.currentTimeMillis();
+
         try (BufferedReader reader = Files.newBufferedReader(file)) {
             String line;
             List<String> batch = new ArrayList<>(BATCH_SIZE);
@@ -114,10 +118,11 @@ public class HLLIngestion {
             executor.shutdown();
             executor.awaitTermination(10, TimeUnit.MINUTES);
         }
-        log.info("Finished processing the file: " + file);
+        log.info("Finished processing the file: {} took {} ms", file, (System.currentTimeMillis() - startTime));
     }
 
     private void processBatch(List<String> batch) throws InterruptedException {
+        long startTime = System.currentTimeMillis();
         int batchSize = batch.size();
         final CountDownLatch latch = new CountDownLatch(batchSize);
         final ConcurrentHashMap<String, Set<ByteArrayWrapper>> perSegmentMap = new ConcurrentHashMap<>();
@@ -127,7 +132,7 @@ public class HLLIngestion {
         latch.await();
 
         saveToAerospike(perSegmentMap);
-        log.info("Main thread: Batch of {} lines finished.", batchSize);
+        log.info("Batch of {} lines finished in {} ms.", batchSize, (System.currentTimeMillis() - startTime));
     }
 
     private void saveToAerospike(ConcurrentHashMap<String, Set<ByteArrayWrapper>> perSegmentMap) throws InterruptedException{
@@ -144,7 +149,6 @@ public class HLLIngestion {
     }
 
     private void addBatchToSegmentWithRetries(String segmentId, List<byte[]> hashedValues, final CountDownLatch latch) {
-        // Build operation once
         try {
             final List<Value> users = new ArrayList<>();
             for(final byte[] bytes : hashedValues) {
@@ -152,11 +156,11 @@ public class HLLIngestion {
             }
 
             final HLLPolicy hllPolicy = new HLLPolicy(HLLWriteFlags.DEFAULT | HLLWriteFlags.NO_FAIL);
-            final Operation addOp = HLLOperation.add(hllPolicy, "users", users, indexBits, minhashBits);
+            final Operation addOp = HLLOperation.add(hllPolicy, BIN_NAME, users, INDEX_BITS, MINHASH_BITS);
             final Key key = new Key(namespace, setName, segmentId);
             int maxRetries = 3;
             int attempt = 0;
-            long sleep = 100l;
+            long sleep = 50l;
             while (attempt <= maxRetries) {
                 try {
                     client.operate(null, key, addOp);
@@ -172,7 +176,7 @@ public class HLLIngestion {
                     } catch (InterruptedException ignored) {
                         Thread.currentThread().interrupt();
                     }
-                    sleep = Math.min(sleep * 2, 500L);
+                    sleep = Math.min(sleep * 2, 100L);
                 }
             }
         } finally {
