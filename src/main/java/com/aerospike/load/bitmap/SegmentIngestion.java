@@ -108,7 +108,7 @@ public class SegmentIngestion {
             saveToAerospike();
 
         } catch (Exception e) {
-            log.error(e);
+            log.error(e.getMessage(), e);
         } finally {
             executor.shutdown();
         }
@@ -124,7 +124,7 @@ public class SegmentIngestion {
         }
 
         latch.await();
-        log.debug("Main thread: Batch of {} lines finished.", batchSize);
+        log.info("Main thread: Batch of {} lines finished.", batchSize);
     }
 
     private void processLine(final String line, CountDownLatch latch) {
@@ -146,7 +146,7 @@ public class SegmentIngestion {
                 }
             }
         } catch (Exception e) {
-            log.warn("Error while processing line ", e);
+            log.error("Error while processing line ", e);
         } finally {
             latch.countDown();
         }
