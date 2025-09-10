@@ -162,9 +162,10 @@ public class SegmentIngestion {
             Roaring64NavigableMap bitmap = new Roaring64NavigableMap();
             bitmap.deserialize(dis);
             return bitmap;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (Exception e) {
+            log.error("Error in loadSegment() for segmentId: {} ", segmentId, e.getMessage(), e);
         }
+        return null;
     }
 
     private void saveToAerospike() throws IOException {
