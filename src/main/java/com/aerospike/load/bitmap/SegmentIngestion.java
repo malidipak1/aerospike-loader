@@ -105,8 +105,6 @@ public class SegmentIngestion {
                 processBatch(batch);
             }
 
-            saveToAerospike();
-
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         } finally {
@@ -124,6 +122,8 @@ public class SegmentIngestion {
         }
 
         latch.await();
+
+        saveToAerospike();
         log.info("Main thread: Batch of {} lines finished.", batchSize);
     }
 
@@ -168,33 +168,37 @@ public class SegmentIngestion {
         return null;
     }
 
-    private void saveToAerospike() throws IOException {
+    private void saveToAerospike() {
         final WritePolicy policy = new WritePolicy();
         policy.recordExistsAction = RecordExistsAction.REPLACE;
-        for (Map.Entry<String, Roaring64NavigableMap> entry : segmentBitmaps.entrySet()) {
-            final String segmentId = entry.getKey();
-            final Roaring64NavigableMap newBitmap = entry.getValue();
+        try {
+            for (Map.Entry<String, Roaring64NavigableMap> entry : segmentBitmaps.entrySet()) {
+                final String segmentId = entry.getKey();
+                final Roaring64NavigableMap newBitmap = entry.getValue();
 
-            // Step 1: Load existing bitmap from Aerospike
-            Roaring64NavigableMap merged = loadSegment(segmentId);
-            if (merged == null) {
-                merged = new Roaring64NavigableMap();
+                // Step 1: Load existing bitmap from Aerospike
+                Roaring64NavigableMap merged = loadSegment(segmentId);
+                if (merged == null) {
+                    merged = new Roaring64NavigableMap();
+                }
+
+                // Step 2: Merge (bitwise OR)
+                merged.or(newBitmap);
+
+                // Step 3: Save back
+                byte[] serialized = serializeBitmap(merged);
+                Key key = new Key(namespace, setName, segmentId);
+                Bin bin = new Bin("users", Value.get(serialized));
+                client.put(policy, key, bin);
+
+                log.info("segment: {}, total unique users: {}", segmentId, merged.getLongCardinality());
             }
 
-            // Step 2: Merge (bitwise OR)
-            merged.or(newBitmap);
-
-            // Step 3: Save back
-            byte[] serialized = serializeBitmap(merged);
-            Key key = new Key(namespace, setName, segmentId);
-            Bin bin = new Bin("users", Value.get(serialized));
-            client.put(policy, key, bin);
-
-            log.info("segment: {}, total unique users: {}" ,segmentId, merged.getLongCardinality());
+        } catch (Exception e) {
+            log.error("Error while saveToAerospike()", e);
+        } finally {
+            segmentBitmaps.clear();
         }
-
-        // Clear in-memory cache after flush
-        segmentBitmaps.clear();
     }
 
     private byte[] serializeBitmap(Roaring64NavigableMap bitmap) throws IOException {
