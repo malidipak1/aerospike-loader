@@ -15,10 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 public class HLLIngestion {
@@ -115,6 +112,7 @@ public class HLLIngestion {
             log.error(e.getMessage(), e);
         } finally {
             executor.shutdown();
+            executor.awaitTermination(10, TimeUnit.MINUTES);
         }
         log.info("Finished processing the file: " + file);
     }
