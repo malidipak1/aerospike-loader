@@ -40,6 +40,12 @@
             <artifactId>RoaringBitmap</artifactId>
             <version>1.3.0</version>
         </dependency>
+        <!-- https://mvnrepository.com/artifact/org.apache.datasketches/datasketches-java -->
+        <dependency>
+            <groupId>org.apache.datasketches</groupId>
+            <artifactId>datasketches-java</artifactId>
+            <version>6.2.0</version>
+        </dependency>
         <!-- Guava for Murmur3 hashing -->
         <dependency>
             <groupId>com.google.guava</groupId>
