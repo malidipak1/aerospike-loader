@@ -22,7 +22,7 @@ import java.util.concurrent.*;
 
 public class SketchIngestion {
     private static Logger log = LogManager.getLogger(SegmentIngestion.class);
-    private static final int BATCH_SIZE = 75000;
+    private static final int BATCH_SIZE = 150000;
     private static final String BIN_NAME = "users_sketch_IN";
 
     private AerospikeClient client;
